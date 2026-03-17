@@ -429,29 +429,6 @@ function renderHome() {
 
     <button class="btn-primary" onclick="createBracket()" style="width:100%;margin-top:8px;">+ New Bracket</button>
 
-    ${renderLiveScores()}
-
-    <div class="scoring-card">
-      <h3>ESPN Scoring</h3>
-      <div class="scoring-grid">
-        <div>Round of 64: <span>10 pts</span></div>
-        <div>Round of 32: <span>20 pts</span></div>
-        <div>Sweet 16: <span>40 pts</span></div>
-        <div>Elite 8: <span>80 pts</span></div>
-        <div>Final Four: <span>160 pts</span></div>
-        <div>Championship: <span>320 pts</span></div>
-      </div>
-    </div>
-
-    ${isAdmin ? `
-      <div class="admin-section">
-        <h3 style="font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--orange-500);margin-bottom:8px;">Admin: Tournament</h3>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Fetch latest game results from ESPN and update bracket scores.</p>
-        <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;background:var(--orange-500);" onclick="refreshTournamentResults()">Refresh Results from ESPN</button>
-        <span id="refresh-status" style="font-size:12px;color:var(--text-muted);margin-left:12px;"></span>
-      </div>
-    ` : ''}
-
     ${allBrackets.filter(b => b.member_name !== currentMember).length > 0 ? `
       <h2 class="section-title" style="margin-top:28px;">Everyone's Brackets</h2>
       <div class="card">
@@ -474,6 +451,29 @@ function renderHome() {
         `).join("")}
       </div>
     ` : ''}
+
+    <div class="scoring-card">
+      <h3>ESPN Scoring</h3>
+      <div class="scoring-grid">
+        <div class="scoring-item"><span class="scoring-round">Round of 64</span><span class="scoring-pts">10 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Round of 32</span><span class="scoring-pts">20 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Sweet 16</span><span class="scoring-pts">40 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Elite 8</span><span class="scoring-pts">80 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Final Four</span><span class="scoring-pts">160 pts</span></div>
+        <div class="scoring-item"><span class="scoring-round">Championship</span><span class="scoring-pts">320 pts</span></div>
+      </div>
+    </div>
+
+    ${isAdmin ? `
+      <div class="admin-section">
+        <h3 style="font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--orange-500);margin-bottom:8px;">Admin: Tournament</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Fetch latest game results from ESPN and update bracket scores.</p>
+        <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;background:var(--orange-500);" onclick="refreshTournamentResults()">Refresh Results from ESPN</button>
+        <span id="refresh-status" style="font-size:12px;color:var(--text-muted);margin-left:12px;"></span>
+      </div>
+    ` : ''}
+
+    ${renderLiveScores()}
   `;
 }
 
