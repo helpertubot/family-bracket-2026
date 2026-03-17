@@ -8,5 +8,5 @@ services:
     envVars:
       - key: PORT
         value: "10000"
-      - key: DB_PATH
-        value: /opt/render/project/src/family_bracket.db
+      - key: DATABASE_URL
+        value: "postgresql://neondb_owner:npg_bkNlfWGCVD95@ep-dawn-lake-am5wefih-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
