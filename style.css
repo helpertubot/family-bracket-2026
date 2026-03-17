@@ -831,6 +831,212 @@ button { border: none; cursor: pointer; background: none; font-family: inherit; 
   background: var(--red-50) !important;
 }
 
+/* === PICK STATUS (correct/wrong) === */
+.team-slot.pick-correct {
+  background: var(--green-100) !important;
+  border-left: 3px solid var(--green-600);
+}
+
+.team-slot.pick-correct .team-name {
+  color: var(--green-600) !important;
+  font-weight: 700 !important;
+}
+
+.team-slot.pick-wrong {
+  background: #fef2f2 !important;
+  border-left: 3px solid #dc2626;
+}
+
+.team-slot.pick-wrong .team-name {
+  color: #dc2626 !important;
+  font-weight: 600 !important;
+  text-decoration: line-through;
+}
+
+.pick-icon-correct {
+  color: var(--green-600);
+  font-weight: 800;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pick-icon-wrong {
+  color: #dc2626;
+  font-weight: 800;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* === LIVE SCORES === */
+.live-scores-section {
+  margin-bottom: 24px;
+}
+
+.live-day-header {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--orange-600);
+  margin: 16px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--navy-100);
+}
+
+.live-day-header:first-of-type {
+  margin-top: 0;
+}
+
+.live-scores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.live-game-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.live-game-card.live-game-active {
+  border-color: var(--red-500);
+  box-shadow: 0 0 0 1px var(--red-500);
+}
+
+.live-game-card.live-game-final {
+  opacity: 0.85;
+}
+
+.live-game-status {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+}
+
+.live-game-active .live-game-status {
+  color: var(--red-500);
+}
+
+.live-game-teams {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.live-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-team.live-winner {
+  font-weight: 700;
+}
+
+.live-seed {
+  font-size: 11px;
+  color: var(--text-faint);
+  min-width: 16px;
+  text-align: right;
+  font-weight: 700;
+}
+
+.live-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-score-num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  min-width: 24px;
+  text-align: right;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--red-500);
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* === LEADERBOARD TABLE === */
+.leaderboard-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.leaderboard-table thead {
+  background: var(--navy-900);
+  color: white;
+}
+
+.leaderboard-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.leaderboard-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.leaderboard-table tbody tr:hover {
+  background: var(--navy-50);
+}
+
+.leaderboard-table tbody tr.lb-me {
+  background: #fff7ed;
+}
+
+.leaderboard-table tbody tr.lb-me:hover {
+  background: #ffedd5;
+}
+
+.lb-name-cell {
+  max-width: 160px;
+}
+
+.lb-tb {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* === ADMIN SECTION === */
+.admin-section {
+  background: #fff8f1;
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
 /* === MOBILE === */
 @media (max-width: 600px) {
   .bracket-round-headers {
@@ -841,4 +1047,7 @@ button { border: none; cursor: pointer; background: none; font-family: inherit; 
   }
   .bracket-header { flex-direction: column; align-items: flex-start; }
   .ff-grid { grid-template-columns: 1fr; gap: 20px; }
+  .live-scores-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }

@@ -78,6 +78,9 @@ let adminError = "";
 let toastMessage = "";
 let toastTimeout = null;
 let pendingConfirm = null; // { message, onConfirm }
+let tournamentResults = [];  // from /api/tournament/results
+let liveSchedule = { games: [] };  // from /api/tournament/schedule
+let expandedScheduleDays = {}; // track which day sections are expanded
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -264,11 +267,145 @@ function renderBottomNav() {
   `;
 }
 
+// ===== LIVE SCORES =====
+const VEGAS_TZ = 'America/Los_Angeles';
+
+function formatGameTime(datetimeStr) {
+  if (!datetimeStr) return '';
+  try {
+    const d = new Date(datetimeStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: VEGAS_TZ });
+  } catch (e) { return ''; }
+}
+
+function getVegasDate(datetimeStr) {
+  if (!datetimeStr) return '';
+  try {
+    const d = new Date(datetimeStr);
+    if (isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-CA', { timeZone: VEGAS_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  } catch (e) { return ''; }
+}
+
+function formatGameDay(dateStr) {
+  if (!dateStr) return 'Upcoming';
+  try {
+    const [y, m, d] = dateStr.split('-');
+    const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${days[dt.getDay()]}, ${months[dt.getMonth()]} ${dt.getDate()}`;
+  } catch (e) { return dateStr; }
+}
+
+function toggleScheduleDay(day) {
+  expandedScheduleDays[day] = !expandedScheduleDays[day];
+  render();
+}
+
+function renderLiveScores() {
+  const games = liveSchedule.games || [];
+  if (games.length === 0) return '';
+
+  const sorted = [...games].sort((a, b) => {
+    const order = { 'in': 0, 'pre': 1, 'final': 2 };
+    if (order[a.game_state] !== order[b.game_state]) return order[a.game_state] - order[b.game_state];
+    return (a.game_datetime || '').localeCompare(b.game_datetime || '');
+  });
+
+  const grouped = {};
+  for (const g of sorted) {
+    const day = (g.game_datetime ? getVegasDate(g.game_datetime) : g.game_date) || 'Unknown';
+    if (!grouped[day]) grouped[day] = [];
+    grouped[day].push(g);
+  }
+
+  const todayStr = getVegasDate(new Date().toISOString());
+  const dayKeys = Object.keys(grouped);
+  let activeDay = dayKeys[0] || '';
+  if (grouped[todayStr]) {
+    activeDay = todayStr;
+  } else {
+    for (const dk of dayKeys) {
+      const hasLiveOrUpcoming = grouped[dk].some(g => g.game_state === 'in' || g.game_state === 'pre');
+      if (hasLiveOrUpcoming) { activeDay = dk; break; }
+    }
+  }
+
+  for (const dk of dayKeys) {
+    if (expandedScheduleDays[dk] === undefined) {
+      expandedScheduleDays[dk] = (dk === activeDay);
+    }
+  }
+
+  const inProgress = games.filter(g => g.game_state === 'in');
+
+  let html = `<div class="live-scores-section">
+    <h3 class="section-title" style="display:flex;align-items:center;gap:8px;">
+      Tournament Games
+      ${inProgress.length > 0 ? '<span class="live-dot"></span> <span style="font-size:12px;color:#e53e3e;font-weight:600;">LIVE</span>' : ''}
+    </h3>`;
+
+  for (const [day, dayGames] of Object.entries(grouped)) {
+    const roundLabel = dayGames[0]?.round_name || '';
+    const isExpanded = expandedScheduleDays[day];
+    const liveCount = dayGames.filter(g => g.game_state === 'in').length;
+    const gameCount = dayGames.length;
+    const isToday = day === todayStr;
+    const liveIndicator = liveCount > 0 ? ' <span class="live-dot" style="display:inline-block;"></span>' : '';
+    const countBadge = `<span style="font-size:11px;font-weight:500;color:var(--text-muted);margin-left:6px;">(${gameCount} games)</span>`;
+
+    html += `
+      <div class="live-day-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;" onclick="toggleScheduleDay('${day}')">
+        <span>${formatGameDay(day)}${roundLabel ? ' &mdash; ' + roundLabel : ''}${liveIndicator}${isToday ? ' <span style="font-size:10px;background:var(--orange-500);color:#fff;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:600;">TODAY</span>' : ''} ${countBadge}</span>
+        <span style="font-size:18px;color:var(--text-muted);transition:transform 0.2s;transform:rotate(${isExpanded ? '180' : '0'}deg);">&blacktriangledown;</span>
+      </div>`;
+
+    if (isExpanded) {
+      html += `<div class="live-scores-grid">`;
+      for (const g of dayGames) {
+        const stateClass = g.game_state === 'in' ? 'live-game-active' : g.game_state === 'final' ? 'live-game-final' : 'live-game-pre';
+        let stateLabel = '';
+        if (g.game_state === 'in') {
+          stateLabel = g.status_detail || 'LIVE';
+        } else if (g.game_state === 'final') {
+          stateLabel = 'FINAL';
+        } else {
+          stateLabel = formatGameTime(g.game_datetime) || g.round_name || 'TBD';
+        }
+        html += `
+          <div class="live-game-card ${stateClass}">
+            <div class="live-game-status">${stateLabel}</div>
+            <div class="live-game-teams">
+              <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team1_name ? 'live-winner' : ''}">
+                <span class="live-seed">${g.team1_seed || ''}</span>
+                <span class="live-name">${g.team1_name}</span>
+                <span class="live-score-num">${g.game_state !== 'pre' ? g.team1_score : ''}</span>
+              </div>
+              <div class="live-team ${g.game_state === 'final' && g.winner_name === g.team2_name ? 'live-winner' : ''}">
+                <span class="live-seed">${g.team2_seed || ''}</span>
+                <span class="live-name">${g.team2_name}</span>
+                <span class="live-score-num">${g.game_state !== 'pre' ? g.team2_score : ''}</span>
+              </div>
+            </div>
+          </div>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 // ===== HOME =====
 function renderHome() {
   const myBrackets = allBrackets.filter(b => b.member_name === currentMember);
 
   return `
+    ${renderLiveScores()}
+
     <div class="scoring-card">
       <h3>ESPN Scoring</h3>
       <div class="scoring-grid">
@@ -280,6 +417,15 @@ function renderHome() {
         <div>Championship: <span>320 pts</span></div>
       </div>
     </div>
+
+    ${isAdmin ? `
+      <div class="admin-section">
+        <h3 style="font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--orange-500);margin-bottom:8px;">Admin: Tournament</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Fetch latest game results from ESPN and update bracket scores.</p>
+        <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px;background:var(--orange-500);" onclick="refreshTournamentResults()">Refresh Results from ESPN</button>
+        <span id="refresh-status" style="font-size:12px;color:var(--text-muted);margin-left:12px;"></span>
+      </div>
+    ` : ''}
 
     <h2 class="section-title">My Brackets</h2>
 
@@ -341,11 +487,22 @@ function renderBracketEditor() {
   const picks = canEdit ? currentPicks : bracket.picks;
   const pickCount = Object.keys(picks).length;
 
+  // Build pickStatus from leaderboard data for this bracket
+  const pickStatus = {};
+  const lbEntry = (leaderboardData.leaderboard || leaderboardData || []).find(e => e.id === bracket.id);
+  if (lbEntry) {
+    (lbEntry.correct_picks || []).forEach(k => pickStatus[k] = 'correct');
+    (lbEntry.wrong_picks || []).forEach(k => pickStatus[k] = 'wrong');
+    (lbEntry.pending_picks || []).forEach(k => pickStatus[k] = 'pending');
+  }
+  const scoreDisplay = lbEntry ? `<span style="font-size:14px;font-weight:700;color:var(--blue-600);">${lbEntry.score} pts</span>` : '';
+
   return `
     <button class="btn-back" onclick="navigate('home')">← Back</button>
     <div class="bracket-header">
       <h2>${isOwner ? 'My' : escapeHtml(bracket.member_name) + "'s"} Bracket <span style="font-weight:400;font-size:14px;color:var(--text-muted)">(${pickCount}/63 picks)</span></h2>
       <div class="bracket-actions">
+        ${scoreDisplay}
         ${isLocked && !isAdmin ? '<span class="locked-badge">🔒 Locked</span>' : ''}
         ${isAdmin && isLocked ? '<span style="font-size:11px;color:var(--orange-500);font-weight:600;">Admin Edit Mode</span>' : ''}
         ${canEdit ? `<button class="btn-save-draft" onclick="saveBracket()">Save${isAdmin ? ' (Admin)' : ' Draft'}</button>` : ''}
@@ -367,12 +524,12 @@ function renderBracketEditor() {
       <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
     </div>
     <div id="bracket-container">
-      ${currentRegion === 'Final Four' ? renderFinalFour(picks, !canEdit) : renderRegion(currentRegion, picks, !canEdit)}
+      ${currentRegion === 'Final Four' ? renderFinalFour(picks, !canEdit, pickStatus) : renderRegion(currentRegion, picks, !canEdit, pickStatus)}
     </div>
   `;
 }
 
-function renderRegion(region, picks, locked) {
+function renderRegion(region, picks, locked, pickStatus) {
   const teams = BRACKET_DATA[region].teams;
   const rounds = 4;
 
@@ -396,12 +553,13 @@ function renderRegion(region, picks, locked) {
       const { team1, team2 } = getMatchupTeams(region, round, m, teams, picks);
       const matchKey = `${region}-R${round}-M${m}`;
       const selected = picks[matchKey];
+      const pickSt = pickStatus ? pickStatus[matchKey] : null;
 
       html += `
         <div class="matchup-wrapper" style="grid-column:${col}; grid-row:${rowStart}/${rowEnd};">
           <div class="matchup-pair">
-            ${renderTeamSlot(team1, matchKey, selected, locked)}
-            ${renderTeamSlot(team2, matchKey, selected, locked)}
+            ${renderTeamSlot(team1, matchKey, selected, locked, pickSt)}
+            ${renderTeamSlot(team2, matchKey, selected, locked, pickSt)}
           </div>
         </div>
       `;
@@ -412,23 +570,30 @@ function renderRegion(region, picks, locked) {
   return html;
 }
 
-function renderTeamSlot(team, matchKey, selected, locked) {
+function renderTeamSlot(team, matchKey, selected, locked, pickSt) {
   if (!team) {
     return `<div class="team-slot empty ${locked ? 'locked' : ''}"><span class="seed">-</span><span class="team-name">TBD</span></div>`;
   }
   const ts = teamStr(team);
   const isSelected = selected === ts;
   const clickHandler = locked ? "" : `onclick="makePick('${matchKey}', '${ts.replace(/'/g, "\\\\'")}')"`;
+  // Pick status coloring: only apply to the selected team
+  let statusClass = '';
+  if (isSelected && pickSt) {
+    statusClass = pickSt === 'correct' ? 'pick-correct' : pickSt === 'wrong' ? 'pick-wrong' : '';
+  }
   return `
-    <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''}" ${clickHandler}>
+    <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''} ${statusClass}" ${clickHandler}>
       <span class="seed">${team.seed}</span>
       <span class="team-name">${team.name}</span>
-      ${isSelected ? '<span class="pick-dot"></span>' : ''}
+      ${isSelected && !statusClass ? '<span class="pick-dot"></span>' : ''}
+      ${statusClass === 'pick-correct' ? '<span class="pick-icon-correct">✓</span>' : ''}
+      ${statusClass === 'pick-wrong' ? '<span class="pick-icon-wrong">✗</span>' : ''}
     </div>
   `;
 }
 
-function renderFinalFour(picks, locked) {
+function renderFinalFour(picks, locked, pickStatus) {
   const e8East = picks["East-R3-M0"];
   const e8West = picks["West-R3-M0"];
   const e8South = picks["South-R3-M0"];
@@ -450,16 +615,16 @@ function renderFinalFour(picks, locked) {
           <div class="ff-label">Semifinal 1</div>
           <div class="ff-sub">East vs West</div>
           <div class="matchup-pair ff-matchup">
-            ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked)}
-            ${renderTeamSlot(parseTeamStr(e8West), sf1Key, sf1Pick, locked)}
+            ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8West), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
           </div>
         </div>
 
         <div class="ff-championship">
           <div class="ff-label">Championship</div>
           <div class="matchup-pair ff-matchup champ-matchup">
-            ${renderTeamSlot(sf1Winner, champKey, champPick, locked)}
-            ${renderTeamSlot(sf2Winner, champKey, champPick, locked)}
+            ${renderTeamSlot(sf1Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null)}
+            ${renderTeamSlot(sf2Winner, champKey, champPick, locked, pickStatus ? pickStatus[champKey] : null)}
           </div>
           <div class="ff-champion-box ${champion ? '' : 'empty'}">
             <div class="ff-champion-label">🏆 Champion</div>
@@ -471,8 +636,8 @@ function renderFinalFour(picks, locked) {
           <div class="ff-label">Semifinal 2</div>
           <div class="ff-sub">South vs Midwest</div>
           <div class="matchup-pair ff-matchup">
-            ${renderTeamSlot(parseTeamStr(e8South), sf2Key, sf2Pick, locked)}
-            ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked)}
+            ${renderTeamSlot(parseTeamStr(e8South), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
           </div>
         </div>
       </div>
@@ -482,19 +647,53 @@ function renderFinalFour(picks, locked) {
 
 // ===== LEADERBOARD =====
 function renderLeaderboard() {
+  const lb = leaderboardData.leaderboard || leaderboardData || [];
+  const entries = Array.isArray(lb) ? lb : [];
+  const gamesCompleted = leaderboardData.games_completed || 0;
+  const champCombined = leaderboardData.championship_combined;
+
   return `
     <h2 class="section-title">Leaderboard</h2>
-    ${leaderboardData.length > 0 ? `
-      <div class="card" style="padding:0;overflow:hidden;">
-        ${leaderboardData.map((entry, i) => `
-          <div class="leaderboard-row">
-            <div class="lb-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i + 1}</div>
-            <div class="lb-name">${escapeHtml(entry.member_name)}
-              ${entry.tiebreaker ? `<div class="lb-tiebreaker">TB: ${entry.tiebreaker}</div>` : ''}
-            </div>
-            <div class="lb-score">${entry.score}</div>
-          </div>
-        `).join("")}
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+      <span style="font-size:13px; color:var(--text-muted);">${gamesCompleted} games completed</span>
+      ${champCombined !== null && champCombined !== undefined ? `<span style="font-size:13px; color:var(--text-muted);">Championship total: ${champCombined}</span>` : ''}
+      <button class="btn-secondary" onclick="refreshLeaderboard()" style="margin-left:auto; font-size:12px; padding:6px 12px;">Refresh</button>
+    </div>
+    ${entries.length > 0 ? `
+      <div class="leaderboard-table-wrap">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Score</th>
+              <th>TB</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entries.map((e, i) => {
+              const isMe = e.member_name === currentMember;
+              const correctCount = (e.correct_picks || []).length;
+              const wrongCount = (e.wrong_picks || []).length;
+              const pendingCount = (e.pending_picks || []).length;
+              return `
+                <tr class="${isMe ? 'lb-me' : ''}" onclick="viewBracketFromLb(${e.id})" style="cursor:pointer;">
+                  <td class="lb-rank">${e.rank || (i + 1)}</td>
+                  <td class="lb-name-cell">
+                    <div style="font-weight:600;">${escapeHtml(e.member_name)}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">
+                      <span style="color:var(--green-600);">${correctCount}✓</span>
+                      <span style="color:var(--red-500);margin-left:4px;">${wrongCount}✗</span>
+                      <span style="margin-left:4px;">${pendingCount} pending</span>
+                    </div>
+                  </td>
+                  <td class="lb-score">${e.score}</td>
+                  <td class="lb-tb">${e.tiebreaker !== null && e.tiebreaker !== undefined ? e.tiebreaker : '-'}${e.tiebreaker_diff !== null && e.tiebreaker_diff !== undefined ? ` <span style="font-size:11px;color:var(--text-faint);">(${e.tiebreaker_diff > 0 ? '+' : ''}${e.tiebreaker_diff})</span>` : ''}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
       </div>
     ` : `
       <div class="card">
@@ -502,6 +701,20 @@ function renderLeaderboard() {
       </div>
     `}
   `;
+}
+
+function viewBracketFromLb(bracketId) {
+  editBracket(bracketId);
+}
+
+async function refreshLeaderboard() {
+  try {
+    await loadTournamentData();
+    render();
+    showToast("Leaderboard refreshed");
+  } catch (e) {
+    showToast("Failed to refresh");
+  }
 }
 
 // ===== ACTIONS =====
@@ -720,11 +933,41 @@ async function loadData() {
       apiGet("/api/leaderboard"),
     ]);
     allBrackets = bracketsRes.brackets;
-    leaderboardData = lbRes.leaderboard;
+    leaderboardData = lbRes;
   } catch (e) {
     console.error("Load failed:", e);
   }
+  // Load tournament data in background (non-blocking)
+  loadTournamentData();
   render();
+}
+
+async function loadTournamentData() {
+  try {
+    const [schedRes, lbRes] = await Promise.all([
+      apiGet("/api/tournament/schedule"),
+      apiGet("/api/leaderboard"),
+    ]);
+    liveSchedule = schedRes;
+    leaderboardData = lbRes;
+    render();
+  } catch (e) {
+    // Tournament endpoints may not have data yet, ignore
+  }
+}
+
+async function refreshTournamentResults() {
+  const statusEl = document.getElementById("refresh-status");
+  if (statusEl) statusEl.textContent = "Refreshing...";
+  try {
+    const res = await apiPost("/api/admin/tournament/refresh?admin=admin", {});
+    showToast(`Tournament refreshed: ${res.games_upserted} games updated`);
+    if (statusEl) statusEl.textContent = `${res.games_upserted} games updated`;
+    await loadTournamentData();
+  } catch (err) {
+    showToast("Error: " + err.message);
+    if (statusEl) statusEl.textContent = "Error: " + err.message;
+  }
 }
 
 // ===== INIT =====
