@@ -346,9 +346,9 @@ button { border: none; cursor: pointer; background: none; font-family: inherit; 
 .team-slot {
   display: flex;
   align-items: center;
-  padding: 5px 8px;
-  gap: 6px;
-  font-size: 0.78rem;
+  padding: 4px 6px;
+  gap: 4px;
+  font-size: 0.74rem;
   cursor: pointer;
   min-height: 28px;
   position: relative;
@@ -383,10 +383,8 @@ button { border: none; cursor: pointer; background: none; font-family: inherit; 
 
 .team-slot .team-name {
   flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-weight: 500;
+  line-height: 1.2;
 }
 
 .team-slot.empty {
@@ -1040,10 +1038,19 @@ button { border: none; cursor: pointer; background: none; font-family: inherit; 
 /* === MOBILE === */
 @media (max-width: 600px) {
   .bracket-round-headers {
-    grid-template-columns: repeat(4, minmax(110px, 150px));
+    grid-template-columns: repeat(4, minmax(120px, 160px));
   }
   .bracket-grid {
-    grid-template-columns: repeat(4, minmax(110px, 150px));
+    grid-template-columns: repeat(4, minmax(120px, 160px));
+  }
+  .team-slot {
+    font-size: 0.68rem;
+    padding: 4px 5px;
+    gap: 3px;
+  }
+  .team-slot .seed {
+    min-width: 14px;
+    font-size: 0.6rem;
   }
   .bracket-header { flex-direction: column; align-items: flex-start; }
   .ff-grid { grid-template-columns: 1fr; gap: 20px; }
