@@ -112,6 +112,31 @@ function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// ===== TEAM HELPERS (matching friends-pool format) =====
+function teamStr(team) {
+  if (!team) return "";
+  return `${team.seed} ${team.name}`;
+}
+
+function parseTeamStr(str) {
+  if (!str) return null;
+  const match = str.match(/^(\d+)\s+(.+)$/);
+  if (match) return { seed: parseInt(match[1]), name: match[2] };
+  return { seed: 0, name: str };
+}
+
+function getMatchupTeams(region, round, matchIndex, teams, picks) {
+  if (round === 0) {
+    return { team1: teams[matchIndex * 2], team2: teams[matchIndex * 2 + 1] };
+  }
+  const prevKey1 = `${region}-R${round - 1}-M${matchIndex * 2}`;
+  const prevKey2 = `${region}-R${round - 1}-M${matchIndex * 2 + 1}`;
+  return {
+    team1: picks[prevKey1] ? parseTeamStr(picks[prevKey1]) : null,
+    team2: picks[prevKey2] ? parseTeamStr(picks[prevKey2]) : null,
+  };
+}
+
 // ===== RENDERING =====
 function render() {
   const app = document.getElementById("app");
@@ -174,7 +199,6 @@ function renderBottomNav() {
 // ===== HOME =====
 function renderHome() {
   const myBrackets = allBrackets.filter(b => b.member_name === currentMember);
-  const submittedCount = myBrackets.filter(b => b.submitted).length;
 
   return `
     <div class="scoring-card">
@@ -235,154 +259,147 @@ function renderBracketEditor() {
   if (!bracket) return `<div class="empty-state">Bracket not found</div>`;
   const isLocked = bracket.submitted;
   const isOwner = bracket.member_name === currentMember;
-  const pickCount = Object.keys(currentPicks).length;
-
-  let regionTabs = REGIONS.map(r =>
-    `<button class="region-tab ${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>`
-  ).join("");
-  regionTabs += `<button class="region-tab ff ${currentRegion === 'FF' ? 'active' : ''}" onclick="switchRegion('FF')">Final Four</button>`;
-
-  let matchups = "";
-  if (currentRegion === "FF") {
-    matchups = renderFinalFour(isLocked, isOwner);
-  } else {
-    matchups = renderRegionMatchups(currentRegion, isLocked, isOwner);
-  }
+  const picks = isLocked ? bracket.picks : currentPicks;
+  const pickCount = Object.keys(picks).length;
 
   return `
     <button class="btn-back" onclick="navigate('home')">← Back</button>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <h2 class="section-title" style="margin-bottom:0;">${isOwner ? 'My' : escapeHtml(bracket.member_name) + "'s"} Bracket</h2>
-      ${isLocked ? '<span class="bracket-status submitted" style="font-size:13px;">Locked</span>' : ''}
-    </div>
-
-    <div class="pick-count">${pickCount}/63 picks</div>
-    <div class="region-tabs">${regionTabs}</div>
-    ${matchups}
-
-    ${currentRegion === 'FF' ? `
-      <div class="tiebreaker-section">
-        <label>Tiebreaker: Total combined score of championship game</label>
-        <input type="number" id="tiebreaker-input" value="${currentTiebreaker || ''}" placeholder="e.g. 145" ${isLocked || !isOwner ? 'disabled' : ''} onchange="updateTiebreaker()">
-      </div>
-    ` : ''}
-
-    ${!isLocked && isOwner ? `
+    <div class="bracket-header">
+      <h2>${isOwner ? 'My' : escapeHtml(bracket.member_name) + "'s"} Bracket <span style="font-weight:400;font-size:14px;color:var(--text-muted)">(${pickCount}/63 picks)</span></h2>
       <div class="bracket-actions">
-        <button class="btn-primary" onclick="saveBracket()">Save</button>
-        <button class="btn-primary btn-submit" onclick="submitBracket()" ${pickCount < 63 ? 'disabled' : ''}>Lock It In</button>
+        ${isLocked
+          ? '<span class="locked-badge">🔒 Locked</span>'
+          : (isOwner ? `<button class="btn-save-draft" onclick="saveBracket()">Save Draft</button>
+             <button class="btn-submit-bracket" onclick="submitBracket()"${pickCount < 63 ? ' disabled' : ''}>Lock It In</button>` : '')
+        }
       </div>
-    ` : ''}
+    </div>
+    <div class="tiebreaker-row">
+      <label class="tiebreaker-label">Championship Tiebreaker:</label>
+      <span style="font-size:12px; color:var(--text-muted);">Predicted total combined score</span>
+      ${isLocked
+        ? `<span class="tiebreaker-value">${bracket.tiebreaker !== null ? bracket.tiebreaker : 'Not set'}</span>`
+        : (isOwner ? `<input type="number" id="tiebreaker-input" class="tiebreaker-input" placeholder="e.g. 145" min="0" max="500" value="${currentTiebreaker || ''}" onchange="currentTiebreaker = this.value ? parseInt(this.value) : null">` : '')
+      }
+    </div>
+    <div class="region-tabs">
+      ${REGIONS.map(r => `
+        <button class="${currentRegion === r ? 'active' : ''}" onclick="switchRegion('${r}')">${r}</button>
+      `).join("")}
+      <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
+    </div>
+    <div id="bracket-container">
+      ${currentRegion === 'Final Four' ? renderFinalFour(picks, isLocked || !isOwner) : renderRegion(currentRegion, picks, isLocked || !isOwner)}
+    </div>
   `;
 }
 
-function renderRegionMatchups(region, isLocked, isOwner) {
+function renderRegion(region, picks, locked) {
   const teams = BRACKET_DATA[region].teams;
-  let html = "";
+  const rounds = 4;
 
-  // Round 1 — 8 matchups
-  html += `<div style="font-size:13px;font-weight:700;color:var(--navy-700);margin-bottom:10px;">Round of 64</div>`;
-  for (let i = 0; i < 16; i += 2) {
-    const gKey = `${region[0]}_R1_G${(i / 2) + 1}`;
-    html += renderMatchup(gKey, teams[i], teams[i + 1], isLocked, isOwner);
+  let html = `<div class="bracket-round-headers">`;
+  for (let r = 0; r < rounds; r++) {
+    html += `<div class="bracket-round-label">${ROUND_NAMES[r]}</div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="bracket-grid">`;
+
+  for (let round = 0; round < rounds; round++) {
+    const matchCount = 8 / Math.pow(2, round);
+    const rowSpan = 2 * Math.pow(2, round);
+
+    for (let m = 0; m < matchCount; m++) {
+      const rowStart = m * rowSpan + 1;
+      const rowEnd = rowStart + rowSpan;
+      const col = round + 1;
+
+      const { team1, team2 } = getMatchupTeams(region, round, m, teams, picks);
+      const matchKey = `${region}-R${round}-M${m}`;
+      const selected = picks[matchKey];
+
+      html += `
+        <div class="matchup-wrapper" style="grid-column:${col}; grid-row:${rowStart}/${rowEnd};">
+          <div class="matchup-pair">
+            ${renderTeamSlot(team1, matchKey, selected, locked)}
+            ${renderTeamSlot(team2, matchKey, selected, locked)}
+          </div>
+        </div>
+      `;
+    }
   }
 
-  // Round 2 — 4 matchups
-  html += `<div style="font-size:13px;font-weight:700;color:var(--navy-700);margin:18px 0 10px;">Round of 32</div>`;
-  for (let i = 0; i < 8; i += 2) {
-    const gKey = `${region[0]}_R2_G${(i / 2) + 1}`;
-    const prev1 = `${region[0]}_R1_G${i + 1}`;
-    const prev2 = `${region[0]}_R1_G${i + 2}`;
-    const t1 = getPickedTeam(prev1);
-    const t2 = getPickedTeam(prev2);
-    html += renderMatchup(gKey, t1, t2, isLocked, isOwner);
-  }
-
-  // Sweet 16 — 2 matchups
-  html += `<div style="font-size:13px;font-weight:700;color:var(--navy-700);margin:18px 0 10px;">Sweet 16</div>`;
-  for (let i = 0; i < 4; i += 2) {
-    const gKey = `${region[0]}_R3_G${(i / 2) + 1}`;
-    const prev1 = `${region[0]}_R2_G${i + 1}`;
-    const prev2 = `${region[0]}_R2_G${i + 2}`;
-    const t1 = getPickedTeam(prev1);
-    const t2 = getPickedTeam(prev2);
-    html += renderMatchup(gKey, t1, t2, isLocked, isOwner);
-  }
-
-  // Elite 8 — 1 matchup
-  html += `<div style="font-size:13px;font-weight:700;color:var(--navy-700);margin:18px 0 10px;">Elite 8</div>`;
-  const gKey = `${region[0]}_R4_G1`;
-  const prev1 = `${region[0]}_R3_G1`;
-  const prev2 = `${region[0]}_R3_G2`;
-  const t1 = getPickedTeam(prev1);
-  const t2 = getPickedTeam(prev2);
-  html += renderMatchup(gKey, t1, t2, isLocked, isOwner);
-
+  html += `</div>`;
   return html;
 }
 
-function renderFinalFour(isLocked, isOwner) {
-  let html = `<div style="font-size:13px;font-weight:700;color:var(--navy-700);margin-bottom:10px;">Final Four</div>`;
-
-  // Semifinal 1: East winner vs West winner
-  const eastWinner = getPickedTeam("E_R4_G1");
-  const westWinner = getPickedTeam("W_R4_G1");
-  html += renderMatchup("FF_G1", eastWinner, westWinner, isLocked, isOwner, "East vs West");
-
-  // Semifinal 2: South winner vs Midwest winner
-  const southWinner = getPickedTeam("S_R4_G1");
-  const midwestWinner = getPickedTeam("M_R4_G1");
-  html += renderMatchup("FF_G2", southWinner, midwestWinner, isLocked, isOwner, "South vs Midwest");
-
-  // Championship
-  html += `<div style="font-size:13px;font-weight:700;color:var(--orange-600);margin:18px 0 10px;">Championship</div>`;
-  const ff1Winner = getPickedTeam("FF_G1");
-  const ff2Winner = getPickedTeam("FF_G2");
-  html += renderMatchup("CHAMP", ff1Winner, ff2Winner, isLocked, isOwner, "Title Game");
-
-  return html;
+function renderTeamSlot(team, matchKey, selected, locked) {
+  if (!team) {
+    return `<div class="team-slot empty ${locked ? 'locked' : ''}"><span class="seed">-</span><span class="team-name">TBD</span></div>`;
+  }
+  const ts = teamStr(team);
+  const isSelected = selected === ts;
+  const clickHandler = locked ? "" : `onclick="makePick('${matchKey}', '${ts.replace(/'/g, "\\\\'")}')"`;
+  return `
+    <div class="team-slot ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''}" ${clickHandler}>
+      <span class="seed">${team.seed}</span>
+      <span class="team-name">${team.name}</span>
+      ${isSelected ? '<span class="pick-dot"></span>' : ''}
+    </div>
+  `;
 }
 
-function renderMatchup(gameKey, team1, team2, isLocked, isOwner, label) {
-  const picked = currentPicks[gameKey];
-  const canPick = !isLocked && isOwner;
-
-  const t1Name = team1 ? (typeof team1 === 'object' ? team1.name : team1) : "TBD";
-  const t2Name = team2 ? (typeof team2 === 'object' ? team2.name : team2) : "TBD";
-  const t1Seed = team1 && typeof team1 === 'object' ? team1.seed : null;
-  const t2Seed = team2 && typeof team2 === 'object' ? team2.seed : null;
-
-  const t1Disabled = t1Name === "TBD" || !canPick;
-  const t2Disabled = t2Name === "TBD" || !canPick;
+function renderFinalFour(picks, locked) {
+  const e8East = picks["East-R3-M0"];
+  const e8West = picks["West-R3-M0"];
+  const e8South = picks["South-R3-M0"];
+  const e8Midwest = picks["Midwest-R3-M0"];
+  const sf1Key = "FF-SF1";
+  const sf2Key = "FF-SF2";
+  const champKey = "FF-CHAMP";
+  const sf1Pick = picks[sf1Key];
+  const sf2Pick = picks[sf2Key];
+  const champPick = picks[champKey];
+  const sf1Winner = parseTeamStr(sf1Pick);
+  const sf2Winner = parseTeamStr(sf2Pick);
+  const champion = parseTeamStr(champPick);
 
   return `
-    <div class="matchup">
-      ${label ? `<div class="matchup-label">${label}</div>` : ''}
-      <button class="team-btn ${picked === t1Name ? 'selected' : ''} ${t1Disabled ? 'locked' : ''}"
-        onclick="${t1Disabled ? '' : `pickTeam('${gameKey}', '${escapeHtml(t1Name)}')`}"
-        ${t1Disabled ? 'disabled' : ''}>
-        ${t1Seed ? `<span class="seed">(${t1Seed})</span>` : ''}
-        ${escapeHtml(t1Name)}
-      </button>
-      <button class="team-btn ${picked === t2Name ? 'selected' : ''} ${t2Disabled ? 'locked' : ''}"
-        onclick="${t2Disabled ? '' : `pickTeam('${gameKey}', '${escapeHtml(t2Name)}')`}"
-        ${t2Disabled ? 'disabled' : ''}>
-        ${t2Seed ? `<span class="seed">(${t2Seed})</span>` : ''}
-        ${escapeHtml(t2Name)}
-      </button>
+    <div class="ff-container">
+      <div class="ff-grid">
+        <div class="ff-semifinal">
+          <div class="ff-label">Semifinal 1</div>
+          <div class="ff-sub">East vs West</div>
+          <div class="matchup-pair ff-matchup">
+            ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked)}
+            ${renderTeamSlot(parseTeamStr(e8West), sf1Key, sf1Pick, locked)}
+          </div>
+        </div>
+
+        <div class="ff-championship">
+          <div class="ff-label">Championship</div>
+          <div class="matchup-pair ff-matchup champ-matchup">
+            ${renderTeamSlot(sf1Winner, champKey, champPick, locked)}
+            ${renderTeamSlot(sf2Winner, champKey, champPick, locked)}
+          </div>
+          <div class="ff-champion-box ${champion ? '' : 'empty'}">
+            <div class="ff-champion-label">🏆 Champion</div>
+            <div class="ff-champion-name">${champion ? champion.name : 'TBD'}</div>
+          </div>
+        </div>
+
+        <div class="ff-semifinal">
+          <div class="ff-label">Semifinal 2</div>
+          <div class="ff-sub">South vs Midwest</div>
+          <div class="matchup-pair ff-matchup">
+            ${renderTeamSlot(parseTeamStr(e8South), sf2Key, sf2Pick, locked)}
+            ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked)}
+          </div>
+        </div>
+      </div>
     </div>
   `;
-}
-
-function getPickedTeam(gameKey) {
-  const picked = currentPicks[gameKey];
-  if (!picked) return null;
-  // Try to find the team object with seed info
-  for (const region of REGIONS) {
-    const found = BRACKET_DATA[region].teams.find(t => t.name === picked);
-    if (found) return found;
-  }
-  return picked; // Return just the name
 }
 
 // ===== LEADERBOARD =====
@@ -460,18 +477,16 @@ function editBracket(id) {
   render();
 }
 
-function pickTeam(gameKey, teamName) {
-  // Clear downstream picks if this pick changed
-  const old = currentPicks[gameKey];
-  currentPicks[gameKey] = teamName;
-  if (old && old !== teamName) {
-    clearDownstream(gameKey, old);
+function makePick(matchKey, ts) {
+  const old = currentPicks[matchKey];
+  currentPicks[matchKey] = ts;
+  if (old && old !== ts) {
+    clearDownstream(matchKey, old);
   }
   render();
 }
 
 function clearDownstream(gameKey, oldTeam) {
-  // Find all games that could be affected by this pick change
   const allKeys = Object.keys(currentPicks);
   for (const key of allKeys) {
     if (key === gameKey) continue;
@@ -484,25 +499,15 @@ function clearDownstream(gameKey, oldTeam) {
 }
 
 function isDownstream(sourceKey, targetKey) {
-  // Simple heuristic: later rounds are downstream
-  const sourceRound = getRoundNum(sourceKey);
-  const targetRound = getRoundNum(targetKey);
-  return targetRound > sourceRound;
+  return getRoundNum(targetKey) > getRoundNum(sourceKey);
 }
 
 function getRoundNum(key) {
-  if (key.includes("R1")) return 1;
-  if (key.includes("R2")) return 2;
-  if (key.includes("R3")) return 3;
-  if (key.includes("R4")) return 4;
-  if (key.startsWith("FF")) return 5;
-  if (key === "CHAMP") return 6;
+  const m = key.match(/-R(\d+)-/);
+  if (m) return parseInt(m[1]);
+  if (key.startsWith("FF-SF")) return 4;
+  if (key === "FF-CHAMP") return 5;
   return 0;
-}
-
-function updateTiebreaker() {
-  const val = document.getElementById("tiebreaker-input")?.value;
-  currentTiebreaker = val ? parseInt(val) : null;
 }
 
 async function saveBracket() {

@@ -268,13 +268,15 @@ def leaderboard():
     return {"leaderboard": board, "results_count": len(results)}
 
 def get_round(game_key: str) -> int:
-    key = game_key.upper()
-    if "R1" in key: return 1
-    if "R2" in key: return 2
-    if "R3" in key: return 3
-    if "R4" in key: return 4
-    if key.startswith("FF"): return 5
-    if "CHAMP" in key: return 6
+    """Game keys: Region-R0-M0 through Region-R3-M0, FF-SF1, FF-SF2, FF-CHAMP"""
+    import re
+    m = re.search(r'-R(\d+)-', game_key)
+    if m:
+        return int(m.group(1)) + 1  # R0=round1(10pts), R1=round2(20pts), etc.
+    if game_key.startswith("FF-SF"):
+        return 5  # Final Four = 160 pts
+    if game_key == "FF-CHAMP":
+        return 6  # Championship = 320 pts
     return 0
 
 # ---- Static Files ----
