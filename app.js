@@ -250,9 +250,13 @@ function renderHome() {
               <div style="font-weight:600;font-size:15px;">Bracket ${myBrackets.indexOf(b) + 1}</div>
               <div style="font-size:12px;color:var(--text-muted);">${Object.keys(b.picks).length}/63 picks</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span class="bracket-status ${b.submitted ? 'submitted' : 'draft'}">${b.submitted ? 'Locked' : 'Draft'}</span>
-              <button class="btn-secondary" onclick="editBracket(${b.id})" style="padding:6px 12px;font-size:12px;">${b.submitted ? 'View' : 'Edit'}</button>
+              <button class="btn-secondary" onclick="editBracket(${b.id})" style="padding:6px 12px;font-size:12px;">${b.submitted && !isAdmin ? 'View' : 'Edit'}</button>
+              ${isAdmin ? `
+                ${b.submitted ? `<button class="btn-secondary" onclick="adminUnlock(${b.id})" style="padding:6px 10px;font-size:11px;color:var(--blue-600);border-color:var(--blue-600);">Unlock</button>` : ''}
+                <button class="btn-secondary btn-danger" onclick="adminDelete(${b.id})" style="padding:6px 10px;font-size:11px;">Delete</button>
+              ` : ''}
             </div>
           </div>
         `).join("")}
