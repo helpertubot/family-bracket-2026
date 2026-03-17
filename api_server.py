@@ -25,7 +25,15 @@ DATABASE_URL = os.environ.get(
     "postgresql://neondb_owner:npg_bkNlfWGCVD95@ep-dawn-lake-am5wefih-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
 )
 
-FAMILY_MEMBERS = ["John", "Barb", "Paul", "John C", "Will", "Nicole"]
+FAMILY_MEMBERS = {
+    "John": "march1",
+    "Barb": "march2",
+    "Paul": "march3",
+    "John C": "march4",
+    "Will": "march5",
+    "Nicole": "march6",
+}
+ADMIN_PASSWORD = "admin"
 
 # ESPN Standard Scoring
 ROUND_POINTS = {1: 10, 2: 20, 3: 40, 4: 80, 5: 160, 6: 320}
@@ -115,6 +123,10 @@ except Exception as e:
     logger.error(f"DB init failed (non-fatal): {e}")
 
 # ---- Models ----
+class LoginRequest(BaseModel):
+    name: str
+    password: str
+
 class SaveBracketRequest(BaseModel):
     picks: dict
     tiebreaker: Optional[int] = None
@@ -130,7 +142,18 @@ class UpdateResultsRequest(BaseModel):
 
 @app.get("/api/members")
 def list_members():
-    return {"members": FAMILY_MEMBERS}
+    """Return member names only — never expose passwords."""
+    return {"members": list(FAMILY_MEMBERS.keys())}
+
+@app.post("/api/login")
+def login(req: LoginRequest):
+    """Validate name + password. Returns the member name on success."""
+    stored_pw = FAMILY_MEMBERS.get(req.name)
+    if stored_pw is None:
+        raise HTTPException(status_code=401, detail="Unknown member")
+    if req.password != stored_pw:
+        raise HTTPException(status_code=401, detail="Wrong password")
+    return {"ok": True, "member": req.name}
 
 @app.get("/api/brackets")
 def list_brackets():
@@ -167,14 +190,15 @@ def create_bracket(member_name: str):
     return {"id": bracket_id}
 
 @app.put("/api/brackets/{bracket_id}")
-def save_bracket(bracket_id: int, req: SaveBracketRequest):
+def save_bracket(bracket_id: int, req: SaveBracketRequest, admin: str = ""):
     cur = get_cursor()
     cur.execute("SELECT * FROM family_brackets WHERE id = %s", (bracket_id,))
     row = fetchone_dict(cur)
     if not row:
         cur.close()
         raise HTTPException(status_code=404, detail="Bracket not found")
-    if row["submitted"]:
+    is_admin = admin == ADMIN_PASSWORD
+    if row["submitted"] and not is_admin:
         cur.close()
         raise HTTPException(status_code=400, detail="Bracket already locked")
     now = time.time()
@@ -211,10 +235,26 @@ def submit_bracket(bracket_id: int, req: SubmitBracketRequest):
 
 @app.delete("/api/brackets/{bracket_id}")
 def delete_bracket(bracket_id: int, admin: str = ""):
-    if admin != "paul":
-        raise HTTPException(status_code=403, detail="Only Paul can delete brackets")
+    if admin != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Admin password required")
     cur = get_cursor()
     cur.execute("DELETE FROM family_brackets WHERE id = %s", (bracket_id,))
+    db.commit()
+    cur.close()
+    return {"ok": True}
+
+@app.post("/api/brackets/{bracket_id}/unlock")
+def unlock_bracket(bracket_id: int, admin: str = ""):
+    """Admin: unlock a submitted bracket so the owner can edit it again."""
+    if admin != ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Admin password required")
+    cur = get_cursor()
+    cur.execute("SELECT * FROM family_brackets WHERE id = %s", (bracket_id,))
+    row = fetchone_dict(cur)
+    if not row:
+        cur.close()
+        raise HTTPException(status_code=404, detail="Bracket not found")
+    cur.execute("UPDATE family_brackets SET submitted = FALSE, updated_at = %s WHERE id = %s", (time.time(), bracket_id))
     db.commit()
     cur.close()
     return {"ok": True}
@@ -232,7 +272,7 @@ def get_results():
 
 @app.post("/api/results")
 def update_results(req: UpdateResultsRequest, admin: str = ""):
-    if admin != "paul":
+    if admin != ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Only Paul can update results")
     cur = get_cursor()
     cur.execute("UPDATE family_results SET results = %s, updated_at = %s", (json.dumps(req.results), time.time()))

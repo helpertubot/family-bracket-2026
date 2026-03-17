@@ -642,6 +642,75 @@ button { border: none; cursor: pointer; background: none; font-family: inherit; 
 
 .app-footer a { color: var(--text-muted); text-decoration: none; }
 
+/* === LOGIN FORM === */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.login-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy-700);
+}
+
+.login-select,
+.login-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--navy-900);
+  background: var(--surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.login-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+
+.login-select:focus,
+.login-input:focus {
+  outline: none;
+  border-color: var(--blue-600);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+.login-error {
+  background: var(--red-50);
+  color: var(--red-500);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+/* === DANGER BUTTON === */
+.btn-danger {
+  color: var(--red-500) !important;
+  border-color: var(--red-500) !important;
+}
+
+.btn-danger:hover {
+  background: var(--red-50) !important;
+}
+
 /* === MOBILE === */
 @media (max-width: 600px) {
   .bracket-round-headers {

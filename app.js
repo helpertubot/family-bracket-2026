@@ -70,6 +70,9 @@ let currentPicks = {};
 let currentTiebreaker = null;
 let currentRegion = "East";
 let leaderboardData = [];
+let isAdmin = false;
+let memberList = [];  // loaded from /api/members
+let loginError = "";
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -100,6 +103,15 @@ async function apiPut(path, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Request failed" }));
+    throw new Error(err.detail || "Request failed");
+  }
+  return res.json();
+}
+
+async function apiDelete(path) {
+  const res = await fetch(`${API}${path}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Request failed" }));
     throw new Error(err.detail || "Request failed");
@@ -162,14 +174,25 @@ function render() {
 }
 
 function renderNameSelect() {
-  const members = ["John", "Barb", "Paul", "John C", "Will", "Nicole"];
   return `
     <div class="welcome-card">
       <h2>Welcome!</h2>
-      <p>Pick your name to get started</p>
-      <div class="name-grid">
-        ${members.map(m => `<button class="name-btn" onclick="selectMember('${escapeHtml(m)}')">${escapeHtml(m)}</button>`).join("")}
-      </div>
+      <p>Select your name and enter your password</p>
+      <form class="login-form" onsubmit="handleLogin(event)">
+        <div class="login-field">
+          <label for="login-name">Name</label>
+          <select id="login-name" class="login-select" required>
+            <option value="">Choose your name...</option>
+            ${memberList.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="login-field">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" class="login-input" placeholder="Enter password" required />
+        </div>
+        ${loginError ? `<div class="login-error">${escapeHtml(loginError)}</div>` : ''}
+        <button type="submit" class="btn-primary" style="width:100%;margin-top:4px;">Log In</button>
+      </form>
     </div>
   `;
 }
@@ -177,8 +200,12 @@ function renderNameSelect() {
 function renderUserHeader() {
   return `
     <div class="user-header">
-      <span class="greeting">Hey, ${escapeHtml(currentMember)}</span>
-      <button class="switch-btn" onclick="switchUser()">Switch</button>
+      <span class="greeting">Hey, ${escapeHtml(currentMember)} ${isAdmin ? '<span style="font-size:11px;color:var(--orange-500);font-weight:700;">ADMIN</span>' : ''}</span>
+      <div style="display:flex;gap:10px;align-items:center;">
+        ${currentMember === 'Paul' && !isAdmin ? `<button class="switch-btn" style="color:var(--orange-500);" onclick="enterAdmin()">Admin</button>` : ''}
+        ${isAdmin ? `<button class="switch-btn" style="color:var(--orange-500);" onclick="exitAdmin()">Exit Admin</button>` : ''}
+        <button class="switch-btn" onclick="switchUser()">Switch</button>
+      </div>
     </div>
   `;
 }
@@ -241,10 +268,16 @@ function renderHome() {
           <div class="bracket-item">
             <div>
               <div style="font-weight:600;font-size:14px;">${escapeHtml(b.member_name)}</div>
+              <div style="font-size:12px;color:var(--text-muted);">${Object.keys(b.picks).length}/63 picks</div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span class="bracket-status ${b.submitted ? 'submitted' : 'draft'}">${b.submitted ? 'Locked' : 'In Progress'}</span>
               ${b.submitted ? `<button class="btn-secondary" onclick="editBracket(${b.id})" style="padding:6px 12px;font-size:12px;">View</button>` : ''}
+              ${isAdmin ? `
+                <button class="btn-secondary" onclick="editBracket(${b.id})" style="padding:6px 10px;font-size:11px;color:var(--orange-500);border-color:var(--orange-500);">Edit</button>
+                ${b.submitted ? `<button class="btn-secondary" onclick="adminUnlock(${b.id})" style="padding:6px 10px;font-size:11px;color:var(--blue-600);border-color:var(--blue-600);">Unlock</button>` : ''}
+                <button class="btn-secondary btn-danger" onclick="adminDelete(${b.id})" style="padding:6px 10px;font-size:11px;">Delete</button>
+              ` : ''}
             </div>
           </div>
         `).join("")}
@@ -259,7 +292,8 @@ function renderBracketEditor() {
   if (!bracket) return `<div class="empty-state">Bracket not found</div>`;
   const isLocked = bracket.submitted;
   const isOwner = bracket.member_name === currentMember;
-  const picks = isLocked ? bracket.picks : currentPicks;
+  const canEdit = isOwner && !isLocked || isAdmin;
+  const picks = canEdit ? currentPicks : bracket.picks;
   const pickCount = Object.keys(picks).length;
 
   return `
@@ -267,19 +301,18 @@ function renderBracketEditor() {
     <div class="bracket-header">
       <h2>${isOwner ? 'My' : escapeHtml(bracket.member_name) + "'s"} Bracket <span style="font-weight:400;font-size:14px;color:var(--text-muted)">(${pickCount}/63 picks)</span></h2>
       <div class="bracket-actions">
-        ${isLocked
-          ? '<span class="locked-badge">🔒 Locked</span>'
-          : (isOwner ? `<button class="btn-save-draft" onclick="saveBracket()">Save Draft</button>
-             <button class="btn-submit-bracket" onclick="submitBracket()"${pickCount < 63 ? ' disabled' : ''}>Lock It In</button>` : '')
-        }
+        ${isLocked && !isAdmin ? '<span class="locked-badge">🔒 Locked</span>' : ''}
+        ${isAdmin && isLocked ? '<span style="font-size:11px;color:var(--orange-500);font-weight:600;">Admin Edit Mode</span>' : ''}
+        ${canEdit ? `<button class="btn-save-draft" onclick="saveBracket()">Save${isAdmin ? ' (Admin)' : ' Draft'}</button>` : ''}
+        ${isOwner && !isLocked ? `<button class="btn-submit-bracket" onclick="submitBracket()"${pickCount < 63 ? ' disabled' : ''}>Lock It In</button>` : ''}
       </div>
     </div>
     <div class="tiebreaker-row">
       <label class="tiebreaker-label">Championship Tiebreaker:</label>
       <span style="font-size:12px; color:var(--text-muted);">Predicted total combined score</span>
-      ${isLocked
-        ? `<span class="tiebreaker-value">${bracket.tiebreaker !== null ? bracket.tiebreaker : 'Not set'}</span>`
-        : (isOwner ? `<input type="number" id="tiebreaker-input" class="tiebreaker-input" placeholder="e.g. 145" min="0" max="500" value="${currentTiebreaker || ''}" onchange="currentTiebreaker = this.value ? parseInt(this.value) : null">` : '')
+      ${canEdit
+        ? `<input type="number" id="tiebreaker-input" class="tiebreaker-input" placeholder="e.g. 145" min="0" max="500" value="${currentTiebreaker || ''}" onchange="currentTiebreaker = this.value ? parseInt(this.value) : null">`
+        : `<span class="tiebreaker-value">${bracket.tiebreaker !== null ? bracket.tiebreaker : 'Not set'}</span>`
       }
     </div>
     <div class="region-tabs">
@@ -289,7 +322,7 @@ function renderBracketEditor() {
       <button class="${currentRegion === 'Final Four' ? 'active' : ''}" onclick="switchRegion('Final Four')">Final Four</button>
     </div>
     <div id="bracket-container">
-      ${currentRegion === 'Final Four' ? renderFinalFour(picks, isLocked || !isOwner) : renderRegion(currentRegion, picks, isLocked || !isOwner)}
+      ${currentRegion === 'Final Four' ? renderFinalFour(picks, !canEdit) : renderRegion(currentRegion, picks, !canEdit)}
     </div>
   `;
 }
@@ -427,16 +460,66 @@ function renderLeaderboard() {
 }
 
 // ===== ACTIONS =====
-function selectMember(name) {
-  currentMember = name;
-  loadData();
+async function handleLogin(e) {
+  e.preventDefault();
+  const name = document.getElementById('login-name').value;
+  const password = document.getElementById('login-password').value;
+  if (!name || !password) return;
+  loginError = "";
+  try {
+    await apiPost('/api/login', { name, password });
+    currentMember = name;
+    isAdmin = false;
+    loginError = "";
+    await loadData();
+  } catch (err) {
+    loginError = err.message || "Login failed";
+    render();
+  }
 }
 
 function switchUser() {
   currentMember = null;
   currentView = "home";
   currentBracketId = null;
+  isAdmin = false;
+  loginError = "";
   render();
+}
+
+function enterAdmin() {
+  const pw = prompt("Enter admin password:");
+  if (pw === "admin") {
+    isAdmin = true;
+    render();
+  } else if (pw !== null) {
+    alert("Wrong admin password");
+  }
+}
+
+function exitAdmin() {
+  isAdmin = false;
+  render();
+}
+
+async function adminUnlock(bracketId) {
+  if (!confirm("Unlock this bracket so it can be edited again?")) return;
+  try {
+    await apiPost(`/api/brackets/${bracketId}/unlock?admin=admin`, {});
+    await loadData();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function adminDelete(bracketId) {
+  if (!confirm("Delete this bracket? This cannot be undone.")) return;
+  try {
+    await apiDelete(`/api/brackets/${bracketId}?admin=admin`);
+    await loadData();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 function navigate(view) {
@@ -512,7 +595,8 @@ function getRoundNum(key) {
 
 async function saveBracket() {
   try {
-    await apiPut(`/api/brackets/${currentBracketId}`, { picks: currentPicks, tiebreaker: currentTiebreaker });
+    const adminParam = isAdmin ? '?admin=admin' : '';
+    await apiPut(`/api/brackets/${currentBracketId}${adminParam}`, { picks: currentPicks, tiebreaker: currentTiebreaker });
     await loadData();
     alert("Bracket saved!");
   } catch (e) {
@@ -552,7 +636,14 @@ async function loadData() {
 }
 
 // ===== INIT =====
-function init() {
+async function init() {
+  try {
+    const res = await apiGet('/api/members');
+    memberList = res.members;
+  } catch (e) {
+    console.error('Failed to load members:', e);
+    memberList = ["John", "Barb", "Paul", "John C", "Will", "Nicole"]; // fallback
+  }
   render();
 }
 
