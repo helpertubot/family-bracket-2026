@@ -73,6 +73,11 @@ let leaderboardData = [];
 let isAdmin = false;
 let memberList = [];  // loaded from /api/members
 let loginError = "";
+let showAdminInput = false;
+let adminError = "";
+let toastMessage = "";
+let toastTimeout = null;
+let pendingConfirm = null; // { message, onConfirm }
 
 // ===== API HELPERS =====
 async function apiGet(path) {
@@ -170,6 +175,27 @@ function render() {
   }
 
   html += `<div class="app-footer"><a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>`;
+
+  // Toast
+  if (toastMessage) {
+    html += `<div class="toast-bar">${escapeHtml(toastMessage)}</div>`;
+  }
+
+  // Confirm modal
+  if (pendingConfirm) {
+    html += `
+      <div class="confirm-overlay" onclick="confirmNo()">
+        <div class="confirm-box" onclick="event.stopPropagation()">
+          <div class="confirm-msg">${escapeHtml(pendingConfirm.message)}</div>
+          <div class="confirm-btns">
+            <button class="confirm-yes" onclick="confirmYes()">Yes</button>
+            <button class="confirm-no" onclick="confirmNo()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   app.innerHTML = html;
 }
 
@@ -198,12 +224,27 @@ function renderNameSelect() {
 }
 
 function renderUserHeader() {
+  let adminSection = '';
+  if (currentMember === 'Paul' && !isAdmin && !showAdminInput) {
+    adminSection = `<button class="switch-btn" style="color:var(--orange-500);" onclick="toggleAdminInput()">Admin</button>`;
+  } else if (showAdminInput && !isAdmin) {
+    adminSection = `
+      <div class="admin-inline">
+        <input type="password" id="admin-pw" class="admin-pw-input" placeholder="Admin password" />
+        <button class="admin-go-btn" onclick="submitAdminPw()">Go</button>
+        <button class="admin-cancel-btn" onclick="cancelAdminInput()">✕</button>
+      </div>
+      ${adminError ? `<div style="font-size:11px;color:var(--red-500);margin-top:2px;">${escapeHtml(adminError)}</div>` : ''}
+    `;
+  } else if (isAdmin) {
+    adminSection = `<button class="switch-btn" style="color:var(--orange-500);" onclick="exitAdmin()">Exit Admin</button>`;
+  }
+
   return `
     <div class="user-header">
       <span class="greeting">Hey, ${escapeHtml(currentMember)} ${isAdmin ? '<span style="font-size:11px;color:var(--orange-500);font-weight:700;">ADMIN</span>' : ''}</span>
-      <div style="display:flex;gap:10px;align-items:center;">
-        ${currentMember === 'Paul' && !isAdmin ? `<button class="switch-btn" style="color:var(--orange-500);" onclick="enterAdmin()">Admin</button>` : ''}
-        ${isAdmin ? `<button class="switch-btn" style="color:var(--orange-500);" onclick="exitAdmin()">Exit Admin</button>` : ''}
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        ${adminSection}
         <button class="switch-btn" onclick="switchUser()">Switch</button>
       </div>
     </div>
@@ -491,13 +532,30 @@ function switchUser() {
   render();
 }
 
-function enterAdmin() {
-  const pw = prompt("Enter admin password:");
-  if (pw === "admin") {
+function toggleAdminInput() {
+  showAdminInput = true;
+  adminError = "";
+  render();
+  setTimeout(() => { const el = document.getElementById('admin-pw'); if (el) el.focus(); }, 50);
+}
+
+function cancelAdminInput() {
+  showAdminInput = false;
+  adminError = "";
+  render();
+}
+
+function submitAdminPw() {
+  const el = document.getElementById('admin-pw');
+  const pw = el ? el.value : '';
+  if (pw === 'admin') {
     isAdmin = true;
+    showAdminInput = false;
+    adminError = "";
     render();
-  } else if (pw !== null) {
-    alert("Wrong admin password");
+  } else {
+    adminError = "Wrong password";
+    render();
   }
 }
 
@@ -506,24 +564,53 @@ function exitAdmin() {
   render();
 }
 
+// --- Toast (replaces alert) ---
+function showToast(msg) {
+  toastMessage = msg;
+  render();
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => { toastMessage = ''; render(); }, 3000);
+}
+
+// --- Confirm modal (replaces confirm) ---
+function showConfirm(message, onConfirm) {
+  pendingConfirm = { message, onConfirm };
+  render();
+}
+
+function confirmYes() {
+  if (pendingConfirm && pendingConfirm.onConfirm) pendingConfirm.onConfirm();
+  pendingConfirm = null;
+  render();
+}
+
+function confirmNo() {
+  pendingConfirm = null;
+  render();
+}
+
 async function adminUnlock(bracketId) {
-  if (!confirm("Unlock this bracket so it can be edited again?")) return;
-  try {
-    await apiPost(`/api/brackets/${bracketId}/unlock?admin=admin`, {});
-    await loadData();
-  } catch (e) {
-    alert(e.message);
-  }
+  showConfirm("Unlock this bracket so it can be edited again?", async () => {
+    try {
+      await apiPost(`/api/brackets/${bracketId}/unlock?admin=admin`, {});
+      await loadData();
+      showToast("Bracket unlocked");
+    } catch (e) {
+      showToast(e.message);
+    }
+  });
 }
 
 async function adminDelete(bracketId) {
-  if (!confirm("Delete this bracket? This cannot be undone.")) return;
-  try {
-    await apiDelete(`/api/brackets/${bracketId}?admin=admin`);
-    await loadData();
-  } catch (e) {
-    alert(e.message);
-  }
+  showConfirm("Delete this bracket? This cannot be undone.", async () => {
+    try {
+      await apiDelete(`/api/brackets/${bracketId}?admin=admin`);
+      await loadData();
+      showToast("Bracket deleted");
+    } catch (e) {
+      showToast(e.message);
+    }
+  });
 }
 
 function navigate(view) {
@@ -548,7 +635,7 @@ async function createBracket() {
     currentView = "bracket";
     await loadData();
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
@@ -602,26 +689,27 @@ async function saveBracket() {
     const adminParam = isAdmin ? '?admin=admin' : '';
     await apiPut(`/api/brackets/${currentBracketId}${adminParam}`, { picks: currentPicks, tiebreaker: currentTiebreaker });
     await loadData();
-    alert("Bracket saved!");
+    showToast("Bracket saved!");
   } catch (e) {
-    alert(e.message);
+    showToast(e.message);
   }
 }
 
 async function submitBracket() {
   if (Object.keys(currentPicks).length < 63) {
-    alert("You need all 63 picks to lock in your bracket.");
+    showToast("You need all 63 picks to lock in your bracket.");
     return;
   }
-  if (!confirm("Lock in your bracket? You won't be able to edit it after this.")) return;
-  try {
-    await apiPost(`/api/brackets/${currentBracketId}/submit`, { picks: currentPicks, tiebreaker: currentTiebreaker });
-    await loadData();
-    alert("Bracket locked in!");
-    navigate("home");
-  } catch (e) {
-    alert(e.message);
-  }
+  showConfirm("Lock in your bracket? You won't be able to edit it after this.", async () => {
+    try {
+      await apiPost(`/api/brackets/${currentBracketId}/submit`, { picks: currentPicks, tiebreaker: currentTiebreaker });
+      await loadData();
+      showToast("Bracket locked in!");
+      navigate("home");
+    } catch (e) {
+      showToast(e.message);
+    }
+  });
 }
 
 // ===== DATA LOADING =====
