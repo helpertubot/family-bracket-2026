@@ -217,7 +217,7 @@ function renderNameSelect() {
         </div>
         <div class="login-field">
           <label for="login-password">Password</label>
-          <input type="password" id="login-password" class="login-input" placeholder="Enter password" required />
+          <input type="text" id="login-password" class="login-input" placeholder="Enter password" required />
         </div>
         ${loginError ? `<div class="login-error">${escapeHtml(loginError)}</div>` : ''}
         <button type="submit" class="btn-primary" style="width:100%;margin-top:4px;">Log In</button>
