@@ -57,8 +57,8 @@ const BRACKET_DATA = {
 const REGIONS = ["East", "West", "South", "Midwest"];
 const ROUND_NAMES = ["Round of 64", "Round of 32", "Sweet 16", "Elite 8"];
 const FINAL_FOUR_MATCHUPS = [
-  { label: "Semifinal 1", regions: ["East", "West"] },
-  { label: "Semifinal 2", regions: ["South", "Midwest"] },
+  { label: "Semifinal 1", regions: ["East", "South"] },
+  { label: "Semifinal 2", regions: ["West", "Midwest"] },
 ];
 
 // ===== STATE =====
@@ -595,8 +595,8 @@ function renderTeamSlot(team, matchKey, selected, locked, pickSt) {
 
 function renderFinalFour(picks, locked, pickStatus) {
   const e8East = picks["East-R3-M0"];
-  const e8West = picks["West-R3-M0"];
   const e8South = picks["South-R3-M0"];
+  const e8West = picks["West-R3-M0"];
   const e8Midwest = picks["Midwest-R3-M0"];
   const sf1Key = "FF-SF1";
   const sf2Key = "FF-SF2";
@@ -613,10 +613,10 @@ function renderFinalFour(picks, locked, pickStatus) {
       <div class="ff-grid">
         <div class="ff-semifinal">
           <div class="ff-label">Semifinal 1</div>
-          <div class="ff-sub">East vs West</div>
+          <div class="ff-sub">East vs South</div>
           <div class="matchup-pair ff-matchup">
             ${renderTeamSlot(parseTeamStr(e8East), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
-            ${renderTeamSlot(parseTeamStr(e8West), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8South), sf1Key, sf1Pick, locked, pickStatus ? pickStatus[sf1Key] : null)}
           </div>
         </div>
 
@@ -634,9 +634,9 @@ function renderFinalFour(picks, locked, pickStatus) {
 
         <div class="ff-semifinal">
           <div class="ff-label">Semifinal 2</div>
-          <div class="ff-sub">South vs Midwest</div>
+          <div class="ff-sub">West vs Midwest</div>
           <div class="matchup-pair ff-matchup">
-            ${renderTeamSlot(parseTeamStr(e8South), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
+            ${renderTeamSlot(parseTeamStr(e8West), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
             ${renderTeamSlot(parseTeamStr(e8Midwest), sf2Key, sf2Pick, locked, pickStatus ? pickStatus[sf2Key] : null)}
           </div>
         </div>
