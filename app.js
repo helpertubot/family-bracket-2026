@@ -977,7 +977,7 @@ async function init() {
     memberList = res.members;
   } catch (e) {
     console.error('Failed to load members:', e);
-    memberList = ["John", "Barb", "Paul", "John C", "Will", "Nicole"]; // fallback
+    memberList = ["John", "Barb", "Paul", "John C", "Will", "Nicole", "MJB"]; // fallback
   }
   render();
 }

@@ -32,6 +32,7 @@ FAMILY_MEMBERS = {
     "John C": "march4",
     "Will": "march5",
     "Nicole": "march6",
+    "MJB": "march9",
 }
 ADMIN_PASSWORD = "admin"
 
