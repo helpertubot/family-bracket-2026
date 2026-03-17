@@ -576,7 +576,7 @@ function renderTeamSlot(team, matchKey, selected, locked, pickSt) {
   }
   const ts = teamStr(team);
   const isSelected = selected === ts;
-  const clickHandler = locked ? "" : `onclick="makePick('${matchKey}', '${ts.replace(/'/g, "\\\\'")}')"`;
+  const clickHandler = locked ? "" : `onclick="makePick('${matchKey}', '${ts.replace(/'/g, "\\'")}')"`;
   // Pick status coloring: only apply to the selected team
   let statusClass = '';
   if (isSelected && pickSt) {
